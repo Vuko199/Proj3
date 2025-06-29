@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Scene Graph Animation</title>
+<script>
+
+var canvas, graphics;
+var X_LEFT = -4, X_RIGHT = 4, Y_BOTTOM = -3, Y_TOP = 3;
+var BACKGROUND = "white";
+var pixelSize;
+var frameNumber = 0;
+var running = false;
+var world;
+
+class Node {
+    constructor() {
+        this.transform = { translate: [0, 0], rotate: 0, scale: [1, 1] };
+        this.children = [];
+    }
+
+    addChild(child) {
+        this.children.push(child);
+    }
+
+    draw(graphics) {
+        graphics.save();
+        graphics.translate(this.transform.translate[0], this.transform.translate[1]);
+        graphics.rotate(this.transform.rotate);
+        graphics.scale(this.transform.scale[0], this.transform.scale[1]);
+        
+        this.doDraw(graphics);
+        
+        for (let child of this.children) {
+            child.draw(graphics);
+        }
+        
+        graphics.restore();
+    }
+
+    doDraw(graphics) {}
+}
+
+class Triangle extends Node {
+    constructor(color) {
+        super();
+        this.color = color;
+    }
+
+    doDraw(graphics) {
+        graphics.save();
+        graphics.fillStyle = this.color;
+        graphics.scale(0.6, 1.5);
+        this.filledTriangle(graphics);
+        graphics.restore();
+    }
+
+    filledTriangle(g) {
+        g.beginPath();
+        g.moveTo(-0.5, 0);
+        g.lineTo(0.5, 0);
+        g.lineTo(0, 1);
+        g.closePath();
+        g.fill();
+    }
+}
+
+class Beam extends Node {
+    doDraw(graphics) {
+        graphics.save();
+        graphics.fillStyle = "red";
+        graphics.scale(2.2, 0.2);
+        graphics.fillRect(-0.5, -0.5, 1, 1);
+        graphics.restore();
+    }
+}
+
+class Octagon extends Node {
+    doDraw(graphics) {
+        this.transform.rotate = (frameNumber * 2) * Math.PI / 180;
+
+        graphics.beginPath();
+        let sides = 16; // Zmienione z 8 na 16
+        let radius = 0.4;
+        for (let i = 0; i <= sides; i++) {
+            let angle = i * 2 * Math.PI / sides;
+            let x = radius * Math.cos(angle);
+            let y = radius * Math.sin(angle);
+            if (i === 0) graphics.moveTo(x, y);
+            else graphics.lineTo(x, y);
+        }
+        graphics.stroke();
+    }
+}
+
+class Seesaw extends Node {
+    constructor(x, y, scaleX, scaleY, color) {
+        super();
+        this.transform.translate = [x, y];
+        this.transform.scale = [scaleX, scaleY];
+        
+        let triangle = new Triangle(color);
+        triangle.transform.translate = [0, -1];
+        this.addChild(triangle);
+        
+        let beamGroup = new Node();
+        beamGroup.transform.translate = [0, 0.5];
+        beamGroup.transform.rotate = -20 * Math.PI / 180;
+        
+        let beam = new Beam();
+        beamGroup.addChild(beam);
+        
+        let leftOctagon = new Octagon();
+        leftOctagon.transform.translate = [-0.9, 0];
+        beamGroup.addChild(leftOctagon);
+        
+        let rightOctagon = new Octagon();
+        rightOctagon.transform.translate = [0.9, 0];
+        beamGroup.addChild(rightOctagon);
+        
+        this.addChild(beamGroup);
+    }
+}
+
+function createWorld() {
+    let world = new Node();
+    world.addChild(new Seesaw(-2, 1.5, 0.7, 1, "purple"));
+    world.addChild(new Seesaw(2, 1.5, 0.7, 0.8, "green"));
+    world.addChild(new Seesaw(0, -1.5, 1.2, 1.2, "blue"));
+    return world;
+}
+
+function updateFrame() {
+    frameNumber++;
+}
+
+function draw() {
+    graphics.save();
+    graphics.fillStyle = BACKGROUND;
+    graphics.fillRect(0, 0, canvas.width, canvas.height);
+    graphics.fillStyle = "black";
+    applyLimits(graphics, X_LEFT, X_RIGHT, Y_TOP, Y_BOTTOM, false);
+    graphics.lineWidth = pixelSize;
+    
+    world.draw(graphics);
+    
+    graphics.restore();
+}
+
+function applyLimits(g, xleft, xright, ytop, ybottom, preserveAspect) {
+    var width = canvas.width;
+    var height = canvas.height;
+    if (preserveAspect) {
+        var displayAspect = Math.abs(height / width);
+        var requestedAspect = Math.abs((ybottom - ytop) / (xright - xleft));
+        var excess;
+        if (displayAspect > requestedAspect) {
+            excess = (ybottom - ytop) * (displayAspect / requestedAspect - 1);
+            ybottom += excess / 2;
+            ytop -= excess / 2;
+        } else if (displayAspect < requestedAspect) {
+            excess = (xright - xleft) * (requestedAspect / displayAspect - 1);
+            xright += excess / 2;
+            xleft -= excess / 2;
+        }
+    }
+    var pixelWidth = Math.abs((xright - xleft) / width);
+    var pixelHeight = Math.abs((ybottom - ytop) / height);
+    pixelSize = Math.min(pixelWidth, pixelHeight);
+    g.scale(width / (xright - xleft), height / (ybottom - ytop));
+    g.translate(-xleft, -ytop);
+}
+
+function frame() {
+    if (running) {
+        updateFrame();
+        draw();
+        requestAnimationFrame(frame);
+    }
+}
+
+function doAnimationCheckbox() {
+    var shouldRun = document.getElementById("animateCheck").checked;
+    if (shouldRun != running) {
+        running = shouldRun;
+        if (running) requestAnimationFrame(frame);
+    }
+}
+
+function init() {
+    canvas = document.getElementById("thecanvas");
+    if (!canvas.getContext) {
+        document.getElementById("message").innerHTML = "ERROR: Canvas not supported";
+        return;
+    }
+    graphics = canvas.getContext("2d");
+    document.getElementById("animateCheck").checked = false;
+    document.getElementById("animateCheck").onchange = doAnimationCheckbox;
+    
+    world = createWorld();
+    draw();
+}
+
+</script>
+</head>
+<body onload="init()" style="background-color:#EEEEEE">
+<h3>Scene Graph Animation</h3>
+<p id="message"><label><input type="checkbox" id="animateCheck"><b>Run the Animation</b></label></p>
+<div style="float:left; border: 2px solid black">
+<canvas id="thecanvas" width="800" height="600" style="display:block"></canvas>
+</div>
+</body>
+</html>
